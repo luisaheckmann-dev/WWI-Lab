@@ -1,0 +1,89 @@
+BikeStations
+| extend IngestedAt = ingestion_time()
+| take 10
+
+
+// Average bike availability per neighbourhood (last hour)
+// WWI parallel: current stock levels across regions
+BikeStations
+| where ingestion_time() > ago(1h)
+| summarize
+    AvgBikes = avg(No_Bikes),
+    AvgEmptyDocks = avg(No_Empty_Docks),
+    TotalStations = dcount(BikepointID),
+    LatestReading = max(ingestion_time())
+by Neighbourhood
+| order by AvgBikes desc
+
+// Stations with fewer than 3 bikes available (critical threshold)
+// WWI parallel: warehouses nearing stockout
+BikeStations
+| where ingestion_time() > ago(10m)
+| summarize arg_max(ingestion_time(), *) by BikepointID
+| where No_Bikes < 3
+| project BikepointID, Street, Neighbourhood, No_Bikes, No_Empty_Docks, IngestionTime = ingestion_time()
+| order by No_Bikes asc
+
+
+BikeStations
+| where ingestion_time() > ago(1h)
+| summarize AvgBikes = avg(No_Bikes), AvgDocks = avg(No_Empty_Docks) by Neighbourhood
+| top 15 by AvgBikes desc
+
+
+BikeStations
+| summarize AvgBikes = avg(No_Bikes), LatestReading = max(ingestion_time()) by BikepointID, Street, Neighbourhood, Latitude, Longitude
+| project Longitude, Latitude, AvgBikes, Street
+
+
+BikeStations
+| where ingestion_time() > ago(1h)
+| summarize
+    AvgBikes = avg(No_Bikes),
+    AvgDocks = avg(No_Empty_Docks),
+    MinBikes = min(No_Bikes),
+    MaxBikes = max(No_Bikes),
+    LatestReading = max(ingestion_time())
+    by BikepointID, Street, Neighbourhood, Latitude, Longitude
+
+
+BikeStations
+| distinct Neighbourhood
+| order by Neighbourhood asc
+
+
+BikeStations
+| where ingestion_time() > ago(1h)
+| where array_length(neighbourhood_param) == 0 or Neighbourhood has_any (neighbourhood_param)
+| summarize AvgBikes = avg(No_Bikes), AvgDocks = avg(No_Empty_Docks) by Neighbourhood
+| top 15 by AvgBikes desc
+
+
+BikeStations
+| where array_length(neighbourhood_param) == 0 or Neighbourhood has_any (neighbourhood_param)
+| summarize AvgBikes = avg(No_Bikes), LatestReading = max(ingestion_time()) by BikepointID, Street, Neighbourhood, Latitude, Longitude
+| project Longitude, Latitude, AvgBikes, Street
+
+
+// Latest reading per station with low-stock highlighting
+BikeStations
+| summarize arg_max(ingestion_time(), *) by BikepointID
+| project BikepointID, Street, Neighbourhood, No_Bikes, No_Empty_Docks, IngestionTime = ingestion_time()
+| extend Status = case(
+    No_Bikes < 3, "🔴 Critical Low",
+    No_Bikes < 5, "🟡 Low Stock",
+    "🟢 Normal"
+)
+| order by No_Bikes asc
+
+
+Bike availability trend over time (5-minute intervals)
+BikeStations
+| where ingestion_time() > ago(2h)
+| summarize AvgBikes = avg(No_Bikes) by TimeSlot = bin(ingestion_time(), 5m)
+| order by TimeSlot asc
+
+
+
+
+
